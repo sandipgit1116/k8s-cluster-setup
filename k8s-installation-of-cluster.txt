@@ -1,0 +1,173 @@
+CLUSTER SETUP IN K8S
+=======================
+ 
+1.Create 3 Instances Ubuntu AMI
+   a. Master 2 CPU , 3GB RAM
+   b. Node1  1 CPU , 1GB RAM
+   c. Node2  1 CPU , 1GB RAM 
+
+Add Inbondbs Rules 
+   0-32767 All IMPV4 
+                Add Rules
+===============================================
+
+2. Install MobaExtrem
+    
+In Mobaexterm Open SSH 
+       
+   Master
+   remote host=IP-Address                     [tick ckeck box] specific Username= ubuntu
+
+
+   Addvance Ssh Settings
+
+   [Tick Use Private Key] select aws private Key
+     
+Same process In Node1 & Node2
+
+# sudo -i 
+go to root user in 3 terminals
+====================================================
+
+3. In Moboxtrem 
+ 
+set hostname Master,Node1,Node2
+In Master
+# hostnamectl set-hostname master.san.com
+# bash 
+
+In Node1
+# hostnamectl set-hostname node1.san.com
+# bash
+
+In Node2
+# hostnamectl set-hostname node2.san.com
+# bash
+=============================================================
+
+4. Multy Exec Screen in MobaExtrem SS
+
+    # vim /etc/hosts
+        
+        <Private Ip-Add>  master master.san.com
+        <Private Ip-Add>  node1 node1.san.com
+        <Private Ip-Add>  node2 node2.san.com
+:wq
+
+
+==============================================================================
+Run the following command on all nodes i.e Master and nodes
+
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# sysctl params required by setup, params persist across reboots
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+# Apply sysctl params without reboot
+sudo sysctl --system
+
+=============================================================================
+
+lsmod | grep br_netfilter
+lsmod | grep overlay
+
+=============================================================================
+
+sudo apt-get update
+sudo apt-get install ca-certificates curl gnupg
+
+
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+
+echo \
+  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt-get update
+apt-get install -y containerd.io
+
+vim /etc/containerd/config.toml
+
+*** NOTE= Delete all entry & pest below entry *** 
+
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    SystemdCgroup = true
+
+:wq
+
+systemctl restart containerd.service
+
+=========================================================================================================
+
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl
+
+
+curl -fsSL https://dl.k8s.io/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+===========================================================================================
+                         
+                             *** ONLY MASTER ***
+                             ===================
+#  kubeadm init
+
+ On your master cluster
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+kubectl get nodes  --> notready state
+
+https://kubernetes.io/docs/concepts/cluster-administration/addons/ --> go to this site and click on Weave Net than scroll down and copy following command
+
+kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml   --> paste this onn master
+
+kubectl get nodes   --> master on ready state
+
+======================================================================
+  ON Node--->
+  
+now go to each node and paste the kubejoind cammand which generated after kube init command i.e
+kubeadm join 172.31.39.129:6443 --token 64am7n.zn9vbj39kz38js42 \
+        --discovery-token-ca-cert-hash sha256:52e52b3ac8da6f6ec4dd3dd641394d390328a20eca18695d74c1cb44aa8f8c58
+===============================================================================================
+  On Master-->
+  
+kubectl get nodes
+
+output -->  master.san.com   Ready    control-plane   16m     v1.28.2
+            node1.san.com    Ready    <none>          3m49s   v1.28.2
+            node2.san.com    Ready    <none>          3m36s   v1.28.2
+
+
+
+
+
+
+
+
